@@ -1,0 +1,143 @@
+MODULE main
+
+VAR
+-- Wait_List_i captures the i position in the queue.
+-- - The values of each position are:
+-- - 0: No process is stored for that position;
+-- - 1: Process 1 is stored;
+-- - 2: Process 2 is stored;
+-- - 3: Process 3 is stored.
+-- - Example: Wait_List1=3, Wait_List2=1, Wait_List3=0, means:
+-- - NOTE: Wait_list3 is empty as it is holding 0
+-- - NOTE: Wait_list# go in order of priority each holds a process # or 0
+-- - There are processes 1 and 3 waiting and
+-- - process 3 will be the first one accessing the resource.
+Wait_List1: {0,1,2,3};
+Wait_List2: {0,1,2,3};
+Wait_List3: {0,1,2,3};
+
+pr1: process prc(Wait_List1,Wait_List2,Wait_List3,resource_st,1);
+pr2: process prc(Wait_List1,Wait_List2,Wait_List3,resource_st,2);
+pr3: process prc(Wait_List1,Wait_List2,Wait_List3,resource_st,3);
+
+ASSIGN
+init(Wait_List1) := 0;
+init(Wait_List2) := 0;
+init(Wait_List3) := 0;
+
+-- resource_st is a boolean variable that is true
+-- when the resource is used by one of the processes.
+DEFINE
+resource_st := (pr1.st = c) | (pr2.st = c) | (pr3.st = c);
+
+-- If a waitlist holds the same value as another than both must be 0
+SPEC
+AG ((Wait_List1 = Wait_List2) | (Wait_List1 = Wait_List3)) -> (Wait_List1 = 0)
+SPEC
+AG ((Wait_List2 = Wait_List1) | (Wait_List2 = Wait_List3)) -> (Wait_List2 = 0)
+SPEC
+AG ((Wait_List3 = Wait_List1) | (Wait_List3 = Wait_List2)) -> (Wait_List3 = 0)
+
+SPEC
+AG (pr1.st = t) -> AF(pr1.st = c)
+SPEC
+AG (pr2.st = t) -> AF(pr2.st = c)
+SPEC
+AG (pr3.st = t) -> AF(pr3.st = c)
+
+SPEC
+AG ((pr1.st = n) -> EX(pr1.st = t))
+SPEC
+AG ((pr2.st = n) -> EX(pr2.st = t))
+SPEC
+AG ((pr3.st = n) -> EX(pr3.st = t))
+
+SPEC
+AG !((pr1.st = c) & AF(pr2.st = c))
+SPEC
+AG !((pr1.st = c) & AF(pr3.st = c))
+SPEC
+AG !((pr2.st = c) & AF(pr3.st = c))
+
+SPEC
+EF (pr1.st=t)
+SPEC
+EF (pr2.st=t)
+SPEC
+EF (pr3.st=t)
+
+SPEC
+EF (pr1.st=c)
+SPEC
+EF (pr2.st=c)
+SPEC
+EF (pr3.st=c)
+
+-- SPEC
+-- EF (pr1.st = c & E[pr1.st = c U (!pr1.st = c & E[!pr2.st = c U pr1.st = c])])
+
+------------------------------------------------------------
+---------- PROCESS MODULE ----------------------------------
+------------------------------------------------------------
+MODULE
+prc(Wait_List1,Wait_List2,Wait_List3,resource_st,myturn)
+
+VAR
+-- Variable "st" codifies the current status of each process
+-- - "n": NonCritical: outside the critical section;
+-- - "t": Trying: trying to enter the critical section;
+-- - "c": Critical: inside the critical section.
+st: {n, t, c};
+
+ASSIGN
+init(st) := n;
+
+next(st) := case
+(st = n) : {t,n};
+(st = t) & !resource_st & Wait_List1=myturn : c;
+(st = c) : {c,n};
+TRUE : st;
+esac;
+
+next(Wait_List1) := case
+-- if waitlist1 is empty and a process is trying to enter c
+-- then populate slot with process
+(st = t) & (Wait_List1 = 0) : {1,2,3};
+-- if process is still trying and resource is free then we can empty waitlist1
+(st = t) & !resource_st : 0;
+-- waitlist will hold when resource is unavailable
+(st = t) & (Wait_List1 = 1) & resource_st : 1;
+(st = t) & (Wait_List1 = 2) & resource_st : 2;
+(st = t) & (Wait_List1 = 3) & resource_st : 3;
+(Wait_List1 = 0) : 0;
+TRUE : Wait_List1;
+esac;
+
+next(Wait_List2) := case
+-- if waitlist1 is full but waitlist2 is empty
+-- and a process is trying to enter c then populate slot with process
+(st = t) & (Wait_List2 = 0) & !(Wait_List1 = 0) : {1,2,3};
+-- if waitlist1 is empty and a state is t in waitlist2 we can empty
+(st = t) & (Wait_List2 = 1) & (Wait_List1 = 0) : 0;
+(st = t) & (Wait_List2 = 2) & (Wait_List1 = 0) : 0;
+(st = t) & (Wait_List2 = 3) & (Wait_List1 = 0) : 0;
+(Wait_List2 = 0) : 0;
+TRUE : Wait_List2;
+esac;
+
+next(Wait_List3) := case
+-- if waitlist1 and waitlist2 are full but waitlist3 is empty
+-- and a process is t then populate slot with process
+(st = t) & (Wait_List3 = 0) & !(Wait_List2 = 0) & !(Wait_List1 = 0): {1,2,3};
+-- if waitlist2 is empty and a state is t in waitlist3 we can empty
+(st = t) & (Wait_List3 = 1)  & (Wait_List2 = 0) : 0;
+(st = t) & (Wait_List3 = 2)  & (Wait_List2 = 0) : 0;
+(st = t) & (Wait_List3 = 3)  & (Wait_List2 = 0) : 0;
+(Wait_List3 = 0) : 0;
+TRUE : Wait_List3;
+esac;
+
+FAIRNESS running;
+FAIRNESS !(st = c);
+
+

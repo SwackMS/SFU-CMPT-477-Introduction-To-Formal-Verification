@@ -1,0 +1,216 @@
+MODULE main
+
+ VAR
+ -- fc floor call state
+ -- ec elevator call state
+ -- m moving state
+ -- f floor state
+ -- t time interval state (2 for floors 3 & 2, 1 for floors 2 & 1)
+ -- d door open state
+  fc : {0, 1, 2, 3};
+  ec : {0, 1, 2, 3};
+  m : {0, 1, 2};
+  f : {0, 1, 2, 3};
+  t : {0, 1, 2};
+  d : boolean;
+
+ ASSIGN
+ -- initially all values are 0
+ -- door is open
+ -- default floor is 1
+ 
+  init(fc) := 0;
+  init(ec) := 0;
+  init(d) := TRUE;
+  init(m) := 0;
+  init(f) := 1;
+  init(t) := 0;
+  
+  next(d) := case
+  -- door cannot be open while moving
+  -- door cannot be closed while waiting
+   t=0&m!=0 : FALSE;
+   fc=1&f!=1 : FALSE;
+   fc=2&f!=2 : FALSE;
+   fc=3&f!=3 : FALSE;
+   ec=1&f!=1 : FALSE;
+   ec=2&f!=2 : FALSE;
+   ec=3&f!=3 : FALSE;
+   fc =1&f=1 : TRUE;
+   fc =2&f=2 : TRUE;
+   fc =3&f=3 : TRUE;
+   ec=1&f=1 : TRUE;
+   ec=2&f=2 : TRUE;
+   ec=3&f=3 : TRUE;
+   t=0&fc!=0 : FALSE;
+   t=0&ec!=0 : FALSE;
+   m=0 : TRUE;
+   TRUE : TRUE;
+  esac;
+  
+-- floor call is allowed only if floor is not the same as current floor
+  next(fc) := case
+   fc =1 & f!=1 : 1;
+   fc =2 & f!=2 : 2;
+   fc =3 & f!=3 : 3;
+   TRUE : {1, 2, 3, 0};
+  esac;
+  
+  -- elevator call is allowed only if floor is not the same as current floor
+  next(ec) := case
+   ec=1 & f!=1 : 1;
+   ec=2 & f!=2 : 2;
+   ec=3 & f!=3 : 3;
+   TRUE : {1, 2, 3, 0};
+  esac;
+  
+  -- if elevator is below a floor it is being called to move up
+  -- else move down
+  next(m) := case
+   f=1 & ec=2 : 1;
+   f=1 & ec=3 : 1;
+   f=2 & ec=3 : 1;
+   f=2 & ec=1 : 2;
+   f=3 & ec=1 : 2;
+   f=3 & ec=2 : 2;
+   f=1 & fc =2 : 1;
+   f=1 & fc =3 : 1;
+   f=2 & fc =3 : 1;
+   f=2 & fc =1 : 2;
+   f=3 & fc =1 : 2;
+   f=3 & fc =2 : 2;
+   TRUE:0;
+  esac;
+  
+  -- (2 for floors 3 & 2, 1 for floors 1 & 2)
+  -- the current floor depends if the elevator is being called
+  -- and the current time interval
+  -- when time interval is 0, the elevator will enter a inbetween state {1,2} depending on floors
+  next(f) := case
+   -- begin elevator call 1 case where elevator is at floor 2
+   ec=1&f=2 : 0; -- elevator will enter inbetween state, t=0
+   m=2&t=1 : 1; -- t=1 indicates elevator between floors 2 and 1, therefore we need to reset t=0 as it will complete its movement
+   -- end
+   -- begin elevator call 2 case where elevator is at floor 3
+   ec=2&f=3 : 0;
+   m=2&t=2 : 2;
+   -- end
+   -- begin elevator call 2 case where elevator is at floor 1
+   ec=2&f=1 : 0;
+   m=1&t=1 : 2;
+   -- end
+   -- begin elevator call 3 case where elevator is at floor 2
+   ec=3&f=2 : 0;
+   m=1&t=2 : 3;
+   -- end
+   -- begin floor call 1 case where elevator is at floor 2
+   fc=1&f=2 : 0;
+   m=2&t=1 : 1;
+   -- end
+   -- begin floor call 2 case where elevator is at floor 3
+   fc=2&f=3 : 0;
+   m=2&t=2 : 2;
+   -- end
+   -- begin floor call 2 case where elevator is at floor 1
+   fc=2&f=1 : 0;
+   m=1&t=1 : 2;
+   -- end
+   -- begin floor call 3 case where elevator is at floor 2
+   fc=3&f=2 : 0;
+   m=1&t=2 : 3;
+   -- end
+   -- else if no calls remain same
+   f=1 : 1;
+   f=2 : 2;
+   f=3 : 3;
+   -- if movement in progress
+   f=0&t=1 : {1,2};
+   f=0&t=2 : {2,3};
+   TRUE : {1, 2, 3, 0};
+  esac;
+  
+  next(t) := case
+  -- same cases as floor/elevator call transitions
+  -- t becomes the next interval based on whether elevator is moving to another floor
+  -- and what floor that is
+   ec=1&f=2 : 1; -- move interval forward
+   m=2&t=1 : 0; -- reset
+   ec=2&f=3 : 2;
+   m=2&t=2 : 0;
+   ec=2&f=1 : 1;
+   m=1&t=1 : 0;
+   ec=3&f=2 : 2;
+   m=1&t=2 : 0;
+   fc=1&f=2 : 1;
+   m=2&t=1 : 0;
+   fc=2&f=3 : 2;
+   m=2&t=2 : 0;
+   fc=2&f=1 : 1;
+   m=1&t=1 : 0;
+   fc=3&f=2 : 2;
+   m=1&t=2 : 0;
+   t=1 : 0;
+   t=2 : 0;
+   TRUE : 0;
+  esac;
+
+ -- there cannot be a state where a call to floor 0 is made
+ FAIRNESS !(fc=0)
+ FAIRNESS !(ec=0)
+ -- we will find a state where f=1,2,3
+ FAIRNESS f=1
+ FAIRNESS f=2
+ FAIRNESS f=3
+  
+ -- The elevator never moves with its doors open
+ SPEC
+  AG (!(m=1 & d=TRUE) & !(m=2 & d=TRUE))
+  
+ -- The elevator doors remain open until there is a request to use it
+ SPEC
+  AG A[d=TRUE U (fc=1 | fc=2 | fc=3 | ec=1 | ec=2 | ec=3)]
+ 
+ -- It takes exactly 2 time units for the elevator to move between two consecutive floors
+ -- transition between floors: if floor moving up/down then inbetween and time interval state followed by next floor and reset on time interval
+ SPEC
+  AG ( ((f=1)&(m=1)) -> AX ( (t=1&f=0&m=1) -> AX(t=0&f=2&m=0)) )
+ SPEC
+  AG ( ((f=2)&(m=1)) -> AX ( (t=2&f=0&m=1) -> AX(t=0&f=3&m=0)) )
+ SPEC
+  AG ( ((f=2)&(m=2)) -> AX ( (t=1&f=0&m=2) -> AX(t=0&f=1&m=0)) )
+ SPEC
+  AG ( ((f=3)&(m=2)) -> AX ( (t=2&f=0&m=2) -> AX(t=0&f=2&m=0)) )
+  
+ -- If there are no requests for another floor, the elevator should not move.
+ SPEC
+  AG (((fc=0) & (ec=0)) -> m=0)
+  
+ -- The elevator cannot change directions between floors.
+ SPEC
+  AG (((!(t=0)&(m=1)) -> AX!(m=2)) | ((!(t=0)&(m=2)) -> AX!(m=1)))
+  
+ -- Calls to the elevator from floors are eventually serviced
+ SPEC 
+  AG ((fc=1) -> AF (f=1))
+ SPEC
+  AG ((fc=2) -> AF (f=2))
+ SPEC
+  AG ((fc=3) -> AF (f=3))
+ 
+ -- Calls to the elevator from within the elevator are eventually serviced
+ SPEC
+  AG ((ec=1) -> AF (f = 1))
+ SPEC
+  AG ((ec=2) -> AF (f = 2))
+ SPEC
+  AG ((ec=3) -> AF (f = 3))
+  
+ -- Additional: The elevator cannot go below 1
+ SPEC
+  AG ((f=1) -> AX!(m=2))
+  
+ -- Additional: The elevator cannot go above 3
+ SPEC
+  AG ((f=3) -> AX!(m=1))  
+
+
